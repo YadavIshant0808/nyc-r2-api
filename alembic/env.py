@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.core.config import settings
 from app.core.database import Base
-from app.models import note  # noqa: F401 - import so autogenerate sees the model
+from app.models import memory, note  # noqa: F401 - import so autogenerate sees all models
 
 config = context.config
 if config.config_file_name is not None:
@@ -28,13 +28,18 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_type=True,  # detect column type changes (e.g. enum value changes)
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,  # detect column type changes (e.g. enum value changes)
+    )
     with context.begin_transaction():
         context.run_migrations()
 
