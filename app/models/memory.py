@@ -19,8 +19,13 @@ from app.schemas.memory import MemoryKind, MemoryStatus
 
 class Memory(Base):
     __tablename__ = "memories"
-    __table_args__ = (UniqueConstraint("user_id", "client_id", name="unique_memories_user_client_key"),)
-
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "client_key",
+            name="unique_memories_user_client_key",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
@@ -58,4 +63,3 @@ class Memory(Base):
         onupdate=func.now(),
         nullable=False,
     )
- 

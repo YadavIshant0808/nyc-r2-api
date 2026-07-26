@@ -59,6 +59,37 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("DB_ECHO", "db_echo"),
     )
 
+    # Vertex AI / Gemini settings. The API can still start without a project
+    # configured; the analysis endpoint returns a clear 503 until it is set.
+    google_cloud_project: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GOOGLE_CLOUD_PROJECT", "GCP_PROJECT_ID"),
+    )
+    google_cloud_location: str = Field(
+        default="global",
+        validation_alias=AliasChoices("GOOGLE_CLOUD_LOCATION", "VERTEX_LOCATION"),
+    )
+    gemini_model_id: str = Field(
+        default="gemini-2.5-flash",
+        validation_alias=AliasChoices("GEMINI_MODEL_ID", "GEMINI_MODEL"),
+    )
+    vertex_timeout_seconds: float = Field(
+        default=90.0,
+        gt=0,
+        validation_alias=AliasChoices("VERTEX_TIMEOUT_SECONDS"),
+    )
+    vertex_retry_count: int = Field(
+        default=2,
+        ge=0,
+        le=5,
+        validation_alias=AliasChoices("VERTEX_RETRY_COUNT"),
+    )
+    max_audio_bytes: int = Field(
+        default=30 * 1024 * 1024,
+        gt=0,
+        validation_alias=AliasChoices("MAX_AUDIO_BYTES"),
+    )
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
