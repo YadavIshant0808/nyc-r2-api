@@ -104,16 +104,38 @@ async def analyze_memory(
  
     return result
 
-@router.post("/api/memories")
-async def create_memory(user: dict = Depends(get_current_user_profile)):
+@router.post("/api/memories", response_model=MemoryRead, status_code=status.HTTP_201_CREATED)
+async def create_memory(
+    payload: MemoryCreate,
+    user: dict = Depends(get_current_user_profile),
+    db: AsyncSession = Depends(get_db),
+):
     '''
     Protected route. Requires `Authorization: Bearer <clerk_session_token>`.
     '''
-    return {
-        "message": "Memory created successfully!",
-        "clerk_user_id": user.get("id"),
-        "username": user.get("username"),
-    }
+    user_id = _current_user_id(user)
+ 
+    existing = await db.execute(
+        select(Memory).where(Memory.user_id == user_id, Memory.client_key == payload.client_key)
+    )
+    existing_memory = existing.scalar_one_or_none()
+    if existing_memory is not None:
+        return existing_memory
+
+    memory = build_memory_row(user_id=user_id, payload=payload)
+    db.add(memory)
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+
+        existing = await db.execute(
+            select(Memory).where(Memory.user_id == user_id, Memory.client_key == payload.client_key)
+        )
+        return existing.scalar_one()
+    await db.refresh(memory)
+    return memory
+
 
 @router.get("/api/memories")
 async def get_memories(user: dict = Depends(get_current_user_profile)):
