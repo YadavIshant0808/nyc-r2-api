@@ -137,16 +137,25 @@ async def create_memory(
     return memory
 
 
-@router.get("/api/memories")
-async def get_memories(user: dict = Depends(get_current_user_profile)):
-    '''
-    Protected route. Requires `Authorization: Bearer <clerk_session_token>`.
-    '''
-    return {
-        "message": "Memories retrieved successfully!",
-        "clerk_user_id": user.get("id"),
-        "username": user.get("username"),
-    }
+@router.get("/api/memories", response_model=list[MemoryRead])
+async def get_memories(
+    user: dict = Depends(get_current_user_profile),
+    db: AsyncSession = Depends(get_db),
+    status_filter: MemoryStatus | None = None,
+    ):
+    """Protected route. Requires `Authorization: Bearer <clerk_session_token>`.
+ 
+    Optional `?status_filter=open|completed|dismissed` narrows the list;
+    otherwise returns every memory owned by the caller, newest first.
+    """
+    user_id = _current_user_id(user)
+    query = select(Memory).where(Memory.user_id == user_id)
+    if status_filter is not None:
+        query = query.where(Memory.status == status_filter)
+    query = query.order_by(Memory.created_at.desc())
+    result = await db.execute(query)
+    return result.scalars().all()
+ 
 
 @router.get("/api/memories/{memory_id}")
 async def get_memory(memory_id: str, user: dict = Depends(get_current_user_profile)):
