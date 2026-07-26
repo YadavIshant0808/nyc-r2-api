@@ -9,14 +9,13 @@ spec:
     spec:
       serviceAccountName: backend-ksa
       restartPolicy: Never
-      # The Cloud SQL Auth Proxy runs as a sidecar alongside the migrate
-      # container. It must be running BEFORE alembic connects, so we use
-      # a readiness gate: the migrate container waits for the proxy to be
-      # ready via a startup sleep, then runs migrations against 127.0.0.1:5432.
-      containers:
-        # ── 1. Cloud SQL Auth Proxy sidecar ──────────────────────────────
+      # Using Kubernetes native sidecar container (initContainer with restartPolicy: Always).
+      # The proxy starts first, and once the main "migrate" container exits,
+      # Kubernetes automatically terminates the proxy so the Job can finish.
+      initContainers:
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.0
+          restartPolicy: Always
           args:
             - "--structured-logs"
             - "--port=5432"
@@ -30,21 +29,17 @@ spec:
             limits:
               cpu: "200m"
               memory: "128Mi"
-
-        # ── 2. Alembic migration runner ───────────────────────────────────
+      containers:
         - name: migrate
           image: asia-south1-docker.pkg.dev/project-2505dfd6-33dd-47f2-ab6/get200-app-api-repo/backend:latest
-          # Wait 3 s for the proxy sidecar to open its port, then run.
           command:
             - sh
             - -c
             - "sleep 3 && alembic upgrade head"
           env:
-            # The proxy listens on localhost:5432 inside the pod.
-            # DATABASE_URL must use 127.0.0.1 (not the public Cloud SQL IP).
+            # Connects via the Cloud SQL Auth Proxy sidecar on localhost
             - name: DATABASE_URL
               value: "postgresql://postgres:Nychacks%400808@127.0.0.1:5432/get200"
-            # Clerk settings required by app startup (config.py reads them).
             - name: CLERK_ISSUER
               value: "https://guiding-jennet-79.clerk.accounts.dev"
             - name: CLERK_SECRET_KEY
