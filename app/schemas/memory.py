@@ -30,23 +30,46 @@ class MemoryCandidate(BaseModel):
 
     kind: MemoryKind
     title: str = Field(min_length=2, description="The title of the memory.")
-    content: str = Field(..., description="The content of the memory.")
-    status: Optional[MemoryStatus] = Field(
-        default=MemoryStatus.OPEN,
-        description="The status of the memory.",
-    )
-    created_at: Optional[datetime] = Field(
-        default_factory=datetime.utcnow,
-        description="The timestamp when the memory was created.",
-    )
-    updated_at: Optional[datetime] = Field(
-        default_factory=datetime.utcnow,
-        description="The timestamp when the memory was last updated.",
-    )
+    owner: Optional[str] = Field(default=None, max_length=255)
+    related_person: Optional[str] = Field(default=None, max_length=255)
+    due_at: Optional[datetime] = Field(default=None, description="The due date and time for the memory.")
+    evidence: Optional[str] = Field(min_length=2, max_length=500, description="Verbal snipet copied from the transcript that support this candidate.")
+    source_start: Optional[int] = Field(default=None, ge=0)
+    source_end: Optional[int] = Field(default=None, ge=0)
+    needs_review: bool
 
-    @model_validator(mode="before")
-    def validate_content_length(cls, values):
-        content = values.get("content")
-        if content and len(content) > 500:
-            raise ValueError("Content must be 500 characters or less.")
-        return values
+
+    @model_validator(mode="after")
+    def _check_offsets(self) -> "MemoryCandidate":
+        start, end = self.source_start, self.source_end
+
+    
+        if start is not None and end is not None:
+            if start < 0:
+                raise ValueError("source_start must be a non-negative integer.")
+           
+            if start >= end:
+                raise ValueError("source_start must be less than source_end.")
+            
+        return self
+    
+    @model_validator(mode="after")
+    def _check_due_at_has_tz(self) -> "MemoryCandidate":
+        if self.due_at is not None and self.due_at.tzinfo is None:
+            raise ValueError("due_at must include timezone information")
+        return self
+ 
+ 
+class AnalysisResult(BaseModel):
+    """Full result of one transcript analysis run."""
+ 
+    model_config = ConfigDict(extra="forbid")
+ 
+    request_id: str = Field(min_length=1)
+    transcript: str
+    summary: str
+    detected_language: str = Field(min_length=1)
+    warnings: list[str] = Field(default_factory=list)
+    candidates: list[MemoryCandidate] = Field(default_factory=list, max_length=12)
+    
+          
