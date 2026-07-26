@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -133,7 +134,7 @@ async def extract_memories_from_audio(
     permanently-exceeded quota) fail immediately - retrying the exact same
     request won't fix those.
     """
-    normalized_mime = _normalize_mime_type(mime_type)
+    normalized_mime = _normalize_mine_type(mime_type)
     if normalized_mime not in SUPPORTED_AUDIO_MIME_TYPES:
         raise UnsupportedAudioFormatError(mime_type)
  
