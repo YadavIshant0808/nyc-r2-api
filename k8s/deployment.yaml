@@ -52,11 +52,13 @@ spec:
             # Explicit values override envFrom entries. Keep browser origins
             # synchronized with the deployed frontend domains.
             - name: CORS_ORIGINS
-              value: "https://nyc-r2-web.vercel.app"
+              value: "https://nyc-r2-web.vercel.app,http://get200.qd.je,https://get200.qd.je"
+            - name: CLERK_ISSUER
+              value: "https://guiding-jennet-79.clerk.accounts.dev"
             - name: GOOGLE_CLOUD_PROJECT
               value: "project-2505dfd6-33dd-47f2-ab6"
             - name: GOOGLE_CLOUD_LOCATION
-              value: "global"
+              value: "us-central1"
             - name: GEMINI_MODEL_ID
               value: "gemini-2.5-flash"
             - name: MAX_AUDIO_BYTES

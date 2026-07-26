@@ -9,30 +9,87 @@ steps:
       - 'asia-south1-docker.pkg.dev/$PROJECT_ID/get200-app-api-repo/backend:latest'
       - '.'
 
-  # 2. Push the container image to Artifact Registry
+  # 2. Push the commit-tagged image to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'asia-south1-docker.pkg.dev/$PROJECT_ID/get200-app-api-repo/backend:$SHORT_SHA']
 
-  # 3. Push the latest tag so the base deployment image always exists
+  # 3. Push the latest tag so the migration job always pulls a valid image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'asia-south1-docker.pkg.dev/$PROJECT_ID/get200-app-api-repo/backend:latest']
 
-  # 4. Delete the previous migration Job before re-applying it.
-  # Kubernetes Job pod templates are immutable, so apply fails if the Job exists.
+  # 4. Ensure the K8s namespace and service account exist before anything else
   - name: 'gcr.io/cloud-builders/kubectl'
-    args: ['delete', 'job', 'backend-migrate', '--namespace=get200', '--ignore-not-found']
+    args: ['apply', '-f', 'k8s/namespace.yaml', '-f', 'k8s/ksa.yaml']
     env:
       - 'CLOUDSDK_COMPUTE_REGION=$_REGION'
       - 'CLOUDSDK_CONTAINER_CLUSTER=$_CLUSTER_NAME'
 
-  # 5. Apply manifests (Deployment, HPA, Service) to the get200 namespace
+  # 5. Upsert the get200-secrets K8s Secret so DATABASE_URL and CLERK_SECRET_KEY
+  #    are available to both the migration job and the running deployment.
+  #    --from-literal values are injected by Cloud Build substitutions/secrets.
+  - name: 'gcr.io/cloud-builders/kubectl'
+    args:
+      - 'create'
+      - 'secret'
+      - 'generic'
+      - 'get200-secrets'
+      - '--namespace=get200'
+      # DATABASE_URL must use 127.0.0.1 because the Cloud SQL Auth Proxy
+      # sidecar exposes the connection on localhost inside every pod.
+      - '--from-literal=DATABASE_URL=postgresql://get200_user:Nychacks@0808@127.0.0.1:5432/get200'
+      - '--from-literal=CLERK_SECRET_KEY=sk_test_SId233zcfZiQS9NvOmrvt3bivnuQRZhlRbnmoEQ6uI'
+      - '--save-config'
+      - '--dry-run=client'
+      - '-o=yaml'
+    env:
+      - 'CLOUDSDK_COMPUTE_REGION=$_REGION'
+      - 'CLOUDSDK_CONTAINER_CLUSTER=$_CLUSTER_NAME'
+    # Pipe dry-run YAML into kubectl apply so it's idempotent (create or update)
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        kubectl create secret generic get200-secrets \
+          --namespace=get200 \
+          --from-literal=DATABASE_URL='postgresql://postgres:Nychacks@0808@127.0.0.1:5432/get200' \
+          --from-literal=CLERK_SECRET_KEY='sk_test_SId233zcfZiQS9NvOmrvt3bivnuQRZhlRbnmoEQ6uI' \
+          --save-config --dry-run=client -o yaml \
+        | kubectl apply -f -
+
+  # 6. Delete the previous migration Job (Job pod templates are immutable;
+  #    apply fails if the Job already exists with a different spec).
+  - name: 'gcr.io/cloud-builders/kubectl'
+    args:
+      - 'delete'
+      - 'job'
+      - 'backend-migrate'
+      - '--namespace=get200'
+      - '--ignore-not-found'
+    env:
+      - 'CLOUDSDK_COMPUTE_REGION=$_REGION'
+      - 'CLOUDSDK_CONTAINER_CLUSTER=$_CLUSTER_NAME'
+
+  # 7. Apply all k8s manifests (Deployment, Service, Ingress, HPA, migrate Job)
   - name: 'gcr.io/cloud-builders/kubectl'
     args: ['apply', '-f', 'k8s/', '--namespace=get200']
     env:
       - 'CLOUDSDK_COMPUTE_REGION=$_REGION'
       - 'CLOUDSDK_CONTAINER_CLUSTER=$_CLUSTER_NAME'
 
-  # 6. Set the newly built image in the deployment (Corrected container name and namespace)
+  # 8. Wait for the migration job to finish successfully before rolling out.
+  #    This prevents the new pod from starting before the schema is ready.
+  - name: 'gcr.io/cloud-builders/kubectl'
+    args:
+      - 'wait'
+      - 'job/backend-migrate'
+      - '--for=condition=complete'
+      - '--timeout=120s'
+      - '--namespace=get200'
+    env:
+      - 'CLOUDSDK_COMPUTE_REGION=$_REGION'
+      - 'CLOUDSDK_CONTAINER_CLUSTER=$_CLUSTER_NAME'
+
+  # 9. Roll out the new image to the running deployment
   - name: 'gcr.io/cloud-builders/kubectl'
     args:
       - 'set'
@@ -44,9 +101,21 @@ steps:
       - 'CLOUDSDK_COMPUTE_REGION=$_REGION'
       - 'CLOUDSDK_CONTAINER_CLUSTER=$_CLUSTER_NAME'
 
+  # 10. Wait for the rollout to complete (all pods healthy) before finishing.
+  - name: 'gcr.io/cloud-builders/kubectl'
+    args:
+      - 'rollout'
+      - 'status'
+      - 'deployment/get200-app-api'
+      - '--namespace=get200'
+      - '--timeout=180s'
+    env:
+      - 'CLOUDSDK_COMPUTE_REGION=$_REGION'
+      - 'CLOUDSDK_CONTAINER_CLUSTER=$_CLUSTER_NAME'
+
 substitutions:
   _REGION: asia-south1
-  _CLUSTER_NAME: nyc-r2-api
+  _CLUSTER_NAME: nyc-r2-api   # Your GKE cluster name - verify with: gcloud container clusters list
 
 options:
   logging: CLOUD_LOGGING_ONLY

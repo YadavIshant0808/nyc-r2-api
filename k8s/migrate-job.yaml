@@ -2,25 +2,60 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: backend-migrate
-  namespace: get200 # Fixed: Changed from GET200
+  namespace: get200
 spec:
   backoffLimit: 2
   template:
     spec:
-      serviceAccountName: backend-ksa # Aligned Service Account
+      serviceAccountName: backend-ksa
       restartPolicy: Never
-      initContainers:
+      # The Cloud SQL Auth Proxy runs as a sidecar alongside the migrate
+      # container. It must be running BEFORE alembic connects, so we use
+      # a readiness gate: the migrate container waits for the proxy to be
+      # ready via a startup sleep, then runs migrations against 127.0.0.1:5432.
+      containers:
+        # ── 1. Cloud SQL Auth Proxy sidecar ──────────────────────────────
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.0
-          restartPolicy: Always
           args:
             - "--structured-logs"
             - "--port=5432"
             - "project-2505dfd6-33dd-47f2-ab6:asia-south1:get200-db"
-      containers:
+          securityContext:
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
+
+        # ── 2. Alembic migration runner ───────────────────────────────────
         - name: migrate
-          image: asia-south1-docker.pkg.dev/project-2505dfd6-33dd-47f2-ab6/get200-app-api-repo/backend:latest # Aligned with correct Artifact Registry repo path
-          command: ["alembic", "upgrade", "head"]
-          envFrom:
-            - secretRef:
-                name: get200-secrets # Fixed: Aligned to your real secret name (get200-secrets)
+          image: asia-south1-docker.pkg.dev/project-2505dfd6-33dd-47f2-ab6/get200-app-api-repo/backend:latest
+          # Wait 3 s for the proxy sidecar to open its port, then run.
+          command:
+            - sh
+            - -c
+            - "sleep 3 && alembic upgrade head"
+          env:
+            # The proxy listens on localhost:5432 inside the pod.
+            # DATABASE_URL must use 127.0.0.1 (not the public Cloud SQL IP).
+            - name: DATABASE_URL
+              value: "postgresql://postgres:Nychacks%400808@127.0.0.1:5432/get200"
+            # Clerk settings required by app startup (config.py reads them).
+            - name: CLERK_ISSUER
+              value: "https://guiding-jennet-79.clerk.accounts.dev"
+            - name: CLERK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: get200-secrets
+                  key: CLERK_SECRET_KEY
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
