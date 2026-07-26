@@ -17,6 +17,7 @@ router = APIRouter(tags=["audio-analysis"])
 _VERTEX_ERROR_STATUS: dict[str, int] = {
     "unsupported_audio_format": status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     "vertex_not_configured": status.HTTP_503_SERVICE_UNAVAILABLE,
+    "vertex_auth_missing": status.HTTP_503_SERVICE_UNAVAILABLE,
     "vertex_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
     "vertex_client_error": status.HTTP_502_BAD_GATEWAY,
     "vertex_api_error": status.HTTP_502_BAD_GATEWAY,

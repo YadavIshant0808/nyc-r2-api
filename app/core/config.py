@@ -64,6 +64,10 @@ class Settings(BaseSettings):
         default="gemini-2.5-flash",
         validation_alias=AliasChoices("GEMINI_MODEL_ID", "GEMINI_MODEL"),
     )
+    gemini_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+    )
     vertex_timeout_seconds: float = Field(
         default=90.0,
         gt=0,

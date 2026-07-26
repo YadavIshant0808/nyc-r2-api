@@ -1,6 +1,6 @@
-# HUMAN-02 API
+# VoiceVora API
 
-FastAPI backend for HUMAN-02, a system that turns conversations, documents, and notes into reviewable memories.
+FastAPI backend for VoiceVora, a system that turns conversations, documents, and notes into reviewable memories.
 
 This repository currently provides the authenticated API foundation: Clerk token verification, async PostgreSQL access, Alembic migrations, health probes, and protected per-user data routes. The full audio/document analysis pipeline is the next backend vertical slice.
 

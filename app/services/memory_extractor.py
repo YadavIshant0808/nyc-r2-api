@@ -4,7 +4,9 @@ import asyncio
 import json
 import logging
 
+import google.auth
 from google import genai
+from google.auth.exceptions import DefaultCredentialsError
 from google.genai import types as genai_types
 from google.genai.errors import APIError, ClientError, ServerError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -109,17 +111,31 @@ _client: genai.Client | None = None
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
-        if not settings.google_cloud_project:
+        if settings.google_cloud_project:
+            try:
+                credentials, _ = google.auth.default()
+            except DefaultCredentialsError:
+                credentials = None
+            else:
+                _client = genai.Client(
+                    vertexai=True,
+                    project=settings.google_cloud_project,
+                    location=settings.google_cloud_location,
+                    credentials=credentials,
+                )
+
+        if _client is None and settings.gemini_api_key:
+            _client = genai.Client(api_key=settings.gemini_api_key)
+
+        if _client is None:
             raise VertexExtractionError(
-                code="vertex_not_configured",
-                message="GOOGLE_CLOUD_PROJECT is not configured.",
+                code="vertex_auth_missing",
+                message=(
+                    "Vertex AI authentication is unavailable. Configure "
+                    "Application Default Credentials or GEMINI_API_KEY."
+                ),
                 retryable=False,
             )
-        _client = genai.Client(
-            vertexai=True,
-            project=settings.google_cloud_project,
-            location=settings.google_cloud_location,
-        )
     return _client
 
 
