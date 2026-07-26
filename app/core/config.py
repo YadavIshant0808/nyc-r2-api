@@ -116,7 +116,6 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("MAX_AUDIO_BYTES"),
     )
 
->>>>>>> 81845018fa5d019f6abc2851c37c7ae5b9b1af80
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
