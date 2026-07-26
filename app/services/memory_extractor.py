@@ -108,6 +108,26 @@ _USER_PROMPT = "Transcribe this recording and extract memory candidates from it.
 
 _client: genai.Client | None = None
 
+
+_LEGACY_KIND_MAP = {
+    MemoryKind.FOLLOW_UP: MemoryKind.TASK,
+    MemoryKind.DECISION: MemoryKind.IDEA,
+    MemoryKind.FACT: MemoryKind.TASK,
+}
+
+
+def _normalize_audio_candidate(candidate: MemoryCandidate) -> MemoryCandidate:
+    """Keep the audio API inside VoiceVora's three-folder product contract."""
+    normalized_kind = _LEGACY_KIND_MAP.get(candidate.kind)
+    if normalized_kind is None:
+        return candidate
+
+    return candidate.model_copy(update={
+        "kind": normalized_kind,
+        "needs_review": True,
+    })
+
+
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
@@ -256,19 +276,9 @@ async def extract_memories_from_audio(
             retryable=True,
         ) from exc
 
-    supported_kinds = {
-        MemoryKind.TASK,
-        MemoryKind.PROMISE,
-        MemoryKind.IDEA,
-    }
     normalized_candidates: list[MemoryCandidate] = []
     for candidate in payload.candidates:
-        if candidate.kind not in supported_kinds:
-            raise VertexExtractionError(
-                code="invalid_model_output",
-                message=f"Unsupported memory kind: {candidate.kind.value}",
-                retryable=True,
-            )
+        candidate = _normalize_audio_candidate(candidate)
 
         source_start = payload.transcript.find(candidate.evidence)
         if source_start < 0:

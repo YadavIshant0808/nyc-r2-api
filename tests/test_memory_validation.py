@@ -2,7 +2,10 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.memory import AnalysisResult, MemoryCandidate, MemoryKind
-from app.services.memory_extractor import _normalize_mime_type
+from app.services.memory_extractor import (
+    _normalize_audio_candidate,
+    _normalize_mime_type,
+)
 
 
 def _candidate(**overrides) -> MemoryCandidate:
@@ -55,3 +58,21 @@ def test_candidate_requires_offset_pair() -> None:
 
 def test_browser_codec_parameter_is_removed_from_mime_type() -> None:
     assert _normalize_mime_type("audio/webm;codecs=opus") == "audio/webm"
+
+
+@pytest.mark.parametrize(
+    ("legacy_kind", "expected_kind"),
+    [
+        (MemoryKind.FACT, MemoryKind.TASK),
+        (MemoryKind.FOLLOW_UP, MemoryKind.TASK),
+        (MemoryKind.DECISION, MemoryKind.IDEA),
+    ],
+)
+def test_legacy_audio_kind_is_normalized_for_product_folders(
+    legacy_kind: MemoryKind,
+    expected_kind: MemoryKind,
+) -> None:
+    candidate = _normalize_audio_candidate(_candidate(kind=legacy_kind))
+
+    assert candidate.kind is expected_kind
+    assert candidate.needs_review is True
