@@ -1,8 +1,37 @@
-from fastapi import APIRouter, Depends
+from __future__ import annotations
+
+import uuid
+
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
 
 from app.core.clerk_auth import get_current_user_profile
+from app.core.config import settings    
+from app.core.database import get_db
+from app.models.memory import Memory
+from app.schemas.memory import MemoryCreate, MemoryUpdate, MemoryRead, MemoryStatus, ApiError
+from app.services.memory_validation import apply_memory_update, build_memory_row
+from app.services.memory_extractor import ExtractionNotImplementedError, extract_memories_from_audio
+
 
 router = APIRouter(tags=["memories"])
+
+def _current_user_id(user: dict) -> str:
+    user_id = user.get("id")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token missing subject")
+    return user_id
+
+
+async def _get_owned_memory_or_404(db: AsyncSession, memory_id: int, user_id: str) -> Memory:
+    memory = await db.get(Memory, memory_id)
+    if memory is None or memory.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Memory not found")
+    return memory
+
 
 @router.post("/api/memories/analyze")
 async def analyze_memory(user: dict = Depends(get_current_user_profile)):
