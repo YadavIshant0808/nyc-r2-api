@@ -10,35 +10,31 @@ from google.genai.errors import APIError, ClientError, ServerError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.core.config import settings
-from app.schemas.memory import AnalysisResult, MemoryCandidate
+from app.schemas.memory import MemoryCandidate, AnalysisResult
 
 logger = logging.getLogger(__name__)
 
 
 SUPPORTED_AUDIO_MIME_TYPES = frozenset({
     "audio/wav",
-    "audio/mp3",
-    "audio/mpeg",
-    "audio/aiff",
-    "audio/aac",
-    "audio/ogg",
-    "audio/flac",
-    "audio/webm",
-    "audio/opus",
-    "audio/mp4",
-    "audio/m4a",
+        "audio/mp3",
+        "audio/mpeg",
+        "audio/aiff",
+        "audio/aac",
+        "audio/ogg",
+        "audio/flac",
+        "audio/webm",
+        "audio/opus",
+        "audio/mp4",
+        "audio/m4a",
 })
-
-
 class VertexExtractionError(Exception):
     """Custom exception for errors occurring during vertex AI-based memory extraction."""
-
     def __init__(self, *, code: str, message: str, retryable: bool) -> None:
         self.code = code
         self.message = message
         self.retryable = retryable
         super().__init__(message)
-
 
 class UnsupportedAudioFormatError(VertexExtractionError):
     def __init__(self, mime_type: str) -> None:
@@ -47,7 +43,6 @@ class UnsupportedAudioFormatError(VertexExtractionError):
             message=f"'{mime_type}' is not a supported audio format.",
             retryable=False,
         )
-
 
 class _GeminiExtractionPayload(BaseModel):
     """Internal model for the payload sent to the Gemini API for memory extraction."""
@@ -66,11 +61,11 @@ recording. Do two things:
  
 1. Transcribe the audio completely and accurately, preserving the original
    spoken language, in the `transcript` field.
-2. Extract "memory candidates" - concrete tasks, promises, or ideas stated
-   in the recording.
+2. Extract "memory candidates" - concrete tasks, promises, follow-ups,
+   decisions, ideas, or facts stated in the recording.
  
 Rules for each candidate:
-- `kind` must be exactly one of: task, promise, idea.
+- `kind` must be exactly one of: task, promise, follow-up, decision, idea, fact.
 - `client_key` must be a short string you generate that is unique within
   this response (e.g. "c1", "c2", ...).
 - `evidence` must be a verbatim snippet copied from your own transcript
@@ -109,28 +104,20 @@ _USER_PROMPT = "Transcribe this recording and extract memory candidates from it.
 
 _client: genai.Client | None = None
 
-
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
-        if not settings.google_cloud_project:
-            raise VertexExtractionError(
-                code="vertex_not_configured",
-                message="GOOGLE_CLOUD_PROJECT is not configured.",
-                retryable=False,
-            )
         _client = genai.Client(
             vertexai=True,
             project=settings.google_cloud_project,
-            location=settings.google_cloud_location,
-        )
+            location=settings.google_cloud_location
+            )
     return _client
 
 
-def _normalize_mime_type(mime_type: str) -> str:
+def _normalize_mine_type(mime_type: str) -> str:
     """Strip codec parameters, e.g. 'audio/webm;codecs=opus' -> 'audio/webm'."""
     return mime_type.split(";", 1)[0].strip().lower()
-
 
 async def extract_memories_from_audio(
     *,
@@ -147,15 +134,12 @@ async def extract_memories_from_audio(
     permanently-exceeded quota) fail immediately - retrying the exact same
     request won't fix those.
     """
-    normalized_mime = _normalize_mime_type(mime_type)
+    normalized_mime = _normalize_mine_type(mime_type)
     if normalized_mime not in SUPPORTED_AUDIO_MIME_TYPES:
         raise UnsupportedAudioFormatError(mime_type)
  
     client = _get_client()
-    audio_part = genai_types.Part.from_bytes(
-        data=audio_bytes,
-        mime_type=normalized_mime,
-    )
+    audio_part = genai_types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
     contents = [
         genai_types.Content(
             role="user",

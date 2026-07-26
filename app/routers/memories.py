@@ -1,43 +1,33 @@
 from __future__ import annotations
 
+from email.mime import audio
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
 
 from app.core.clerk_auth import get_current_user_profile
-from app.core.config import settings
+from app.core.config import settings    
 from app.core.database import get_db
 from app.models.memory import Memory
-from app.schemas.memory import (
-    AnalysisResult,
-    ApiError,
-    MemoryCreate,
-    MemoryKind,
-    MemoryRead,
-    MemoryStatus,
-    MemoryUpdate,
-)
-from app.services.memory_extractor import (
-    VertexExtractionError,
-    extract_memories_from_audio,
-)
+from app.schemas.memory import AnalysisResult, MemoryCreate, MemoryUpdate, MemoryRead, MemoryStatus, ApiError
 from app.services.memory_validation import apply_memory_update, build_memory_row
+from app.services.memory_extractor import VertexExtractionError, extract_memories_from_audio
+
 
 router = APIRouter(tags=["memories"])
 
 _VERTEX_ERROR_STATUS: dict[str, int] = {
-    "unsupported_audio_format": status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-    "vertex_not_configured": status.HTTP_503_SERVICE_UNAVAILABLE,
+    "unsupported_content": status.HTTP_422_UNPROCESSABLE_ENTITY,
     "vertex_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
-    "vertex_client_error": status.HTTP_502_BAD_GATEWAY,
+    "vertex_client_error":status.HTTP_500_INTERNAL_SERVER_ERROR,
     "vertex_api_error": status.HTTP_502_BAD_GATEWAY,
     "empty_model_response": status.HTTP_502_BAD_GATEWAY,
-    "invalid_model_output": status.HTTP_502_BAD_GATEWAY,
+    "invalid_model_output": status.HTTP_502_BAD_GATEWAY
 }
-
 
 def _current_user_id(user: dict) -> str:
     user_id = user.get("id")
@@ -55,16 +45,15 @@ async def _get_owned_memory_or_404(db: AsyncSession, memory_id: int, user_id: st
 
 @router.post("/api/memories/analyze", response_model=AnalysisResult)
 async def analyze_memory(
-    file: UploadFile = File(...),
+    audio_file: UploadFile = File(...),
     user: dict = Depends(get_current_user_profile),
 ):
-    """
+    '''
     Protected route. Requires `Authorization: Bearer <clerk_session_token>`.
-    The raw upload is read only for this request and is not persisted.
-    """
+    '''
     request_id = str(uuid.uuid4())
-
-    if file.content_type is None:
+ 
+    if audio.content_type is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=ApiError(
@@ -74,13 +63,7 @@ async def analyze_memory(
                 retryable=False,
             ).model_dump(),
         )
-
-    content_type = file.content_type
-    try:
-        audio_bytes = await file.read(settings.max_audio_bytes + 1)
-    finally:
-        await file.close()
-
+    audio_bytes = audio.read()
     if len(audio_bytes) == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -105,7 +88,7 @@ async def analyze_memory(
     try:
         result = await extract_memories_from_audio(
             audio_bytes=audio_bytes,
-            mime_type=content_type,
+            mime_type=audio.content_type,
             request_id=request_id,
         )
     except VertexExtractionError as exc:
@@ -121,27 +104,19 @@ async def analyze_memory(
  
     return result
 
-
-@router.post(
-    "/api/memories",
-    response_model=MemoryRead,
-    status_code=status.HTTP_201_CREATED,
-)
+@router.post("/api/memories", response_model=MemoryRead, status_code=status.HTTP_201_CREATED)
 async def create_memory(
     payload: MemoryCreate,
     user: dict = Depends(get_current_user_profile),
     db: AsyncSession = Depends(get_db),
 ):
-    """
+    '''
     Protected route. Requires `Authorization: Bearer <clerk_session_token>`.
-    """
+    '''
     user_id = _current_user_id(user)
  
     existing = await db.execute(
-        select(Memory).where(
-            Memory.user_id == user_id,
-            Memory.client_key == payload.client_key,
-        )
+        select(Memory).where(Memory.user_id == user_id, Memory.client_key == payload.client_key)
     )
     existing_memory = existing.scalar_one_or_none()
     if existing_memory is not None:
@@ -155,18 +130,9 @@ async def create_memory(
         await db.rollback()
 
         existing = await db.execute(
-            select(Memory).where(
-                Memory.user_id == user_id,
-                Memory.client_key == payload.client_key,
-            )
+            select(Memory).where(Memory.user_id == user_id, Memory.client_key == payload.client_key)
         )
-        existing_memory = existing.scalar_one_or_none()
-        if existing_memory is None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Memory could not be saved due to a conflicting write.",
-            )
-        return existing_memory
+        return existing.scalar_one()
     await db.refresh(memory)
     return memory
 
@@ -176,8 +142,7 @@ async def get_memories(
     user: dict = Depends(get_current_user_profile),
     db: AsyncSession = Depends(get_db),
     status_filter: MemoryStatus | None = None,
-    kind: MemoryKind | None = Query(default=None),
-):
+    ):
     """Protected route. Requires `Authorization: Bearer <clerk_session_token>`.
  
     Optional `?status_filter=open|completed|dismissed` narrows the list;
@@ -187,8 +152,6 @@ async def get_memories(
     query = select(Memory).where(Memory.user_id == user_id)
     if status_filter is not None:
         query = query.where(Memory.status == status_filter)
-    if kind is not None:
-        query = query.where(Memory.kind == kind)
     query = query.order_by(Memory.created_at.desc())
     result = await db.execute(query)
     return result.scalars().all()
@@ -199,23 +162,23 @@ async def get_memory(
     memory_id: int,
     user: dict = Depends(get_current_user_profile),
     db: AsyncSession = Depends(get_db),
-):
+    ):
 
-    """
+    '''
     Protected route. Requires `Authorization: Bearer <clerk_session_token>`.
-    """
+    '''
     user_id = _current_user_id(user)
     return await _get_owned_memory_or_404(db, memory_id, user_id)
 
 
-@router.put("/api/memories/{memory_id}", response_model=MemoryRead)
+@router.put("/api/memories/{memory_id}", response_model = MemoryRead)
 async def update_memory(
     memory_id: int,
     payload: MemoryUpdate,
     user: dict = Depends(get_current_user_profile),
     db: AsyncSession = Depends(get_db),
-):
-    """Update an owned memory."""
+    ):
+    '''Update the memory'''
     user_id = _current_user_id(user)
     memory = await _get_owned_memory_or_404(db, memory_id, user_id)
     apply_memory_update(memory, payload)
@@ -228,10 +191,10 @@ async def delete_memory(
     memory_id: int,
     user: dict = Depends(get_current_user_profile),
     db: AsyncSession = Depends(get_db),
-):
-    """
+    ):
+    '''
     Protected route. Requires `Authorization: Bearer <clerk_session_token>`.
-    """
+    ''' 
     user_id = _current_user_id(user)
     memory = await _get_owned_memory_or_404(db, memory_id, user_id)
     await db.delete(memory)

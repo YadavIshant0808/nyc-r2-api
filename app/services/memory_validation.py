@@ -3,8 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.models.memory import Memory
-from app.schemas.memory import MemoryCreate, MemoryStatus, MemoryUpdate
-
+from app.schemas.memory import MemoryUpdate, MemoryCreate, MemoryStatus
 
 def apply_memory_update(memory: Memory, payload: MemoryUpdate) -> Memory:
     """Apply updates from a MemoryUpdate payload to an existing Memory instance."""
@@ -14,8 +13,7 @@ def apply_memory_update(memory: Memory, payload: MemoryUpdate) -> Memory:
 
     return memory
 
-
-def build_memory_row(payload: MemoryCreate, user_id: str) -> Memory:
+def build_memory_row(payload: MemoryCreate, user_id: str, client_key: str) -> Memory:
     """Build a new Memory instance from a MemoryCreate payload."""
 
     return Memory(
@@ -33,3 +31,5 @@ def build_memory_row(payload: MemoryCreate, user_id: str) -> Memory:
         confidence=payload.confidence,
         needs_review=payload.needs_review,
     )
+ 
+ 

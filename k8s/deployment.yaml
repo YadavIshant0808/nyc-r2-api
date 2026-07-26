@@ -53,14 +53,6 @@ spec:
             # synchronized with the deployed frontend domains.
             - name: CORS_ORIGINS
               value: "https://nyc-r2-web.vercel.app"
-            - name: GOOGLE_CLOUD_PROJECT
-              value: "project-2505dfd6-33dd-47f2-ab6"
-            - name: GOOGLE_CLOUD_LOCATION
-              value: "global"
-            - name: GEMINI_MODEL_ID
-              value: "gemini-2.5-flash"
-            - name: MAX_AUDIO_BYTES
-              value: "31457280"
           resources:
             requests:
               cpu: "50m"
