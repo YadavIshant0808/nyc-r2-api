@@ -9,16 +9,15 @@ spec:
     spec:
       serviceAccountName: backend-ksa
       restartPolicy: Never
-      # Using Kubernetes native sidecar container (initContainer with restartPolicy: Always).
-      # The proxy starts first, and once the main "migrate" container exits,
-      # Kubernetes automatically terminates the proxy so the Job can finish.
-      initContainers:
+      containers:
+        # ── 1. Cloud SQL Auth Proxy ─────────────────────────────────────
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.0
-          restartPolicy: Always
           args:
             - "--structured-logs"
             - "--port=5432"
+            - "--http-port=9091"
+            - "--quitquitquit"
             - "project-2505dfd6-33dd-47f2-ab6:asia-south1:get200-db"
           securityContext:
             runAsNonRoot: true
@@ -29,13 +28,22 @@ spec:
             limits:
               cpu: "200m"
               memory: "128Mi"
-      containers:
+
+        # ── 2. Alembic migration runner ─────────────────────────────────
         - name: migrate
           image: asia-south1-docker.pkg.dev/project-2505dfd6-33dd-47f2-ab6/get200-app-api-repo/backend:latest
           command:
             - sh
             - -c
-            - "sleep 3 && alembic upgrade head"
+            - |
+              echo "Waiting for Cloud SQL Proxy to start..."
+              sleep 5
+              echo "Running migrations..."
+              alembic upgrade head
+              STATUS=$?
+              echo "Shutting down Cloud SQL Proxy..."
+              python -c "import urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:9091/quitquitquit', method='POST'))"
+              exit $STATUS
           env:
             # Connects via the Cloud SQL Auth Proxy sidecar on localhost
             - name: DATABASE_URL
