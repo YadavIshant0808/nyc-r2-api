@@ -143,3 +143,24 @@ class MemoryUpdate(BaseModel):
         if self.due_at is not None and self.due_at.tzinfo is None:
             raise ValueError("due_at must include timezone information")
         return self
+
+class MemoryRead(BaseModel):
+    """Response shape for persistant memory """
+    model_config = ConfigDict(from_attributes=True)  # allows ORM -> Pydantic
+ 
+    id: int
+    user_id: str
+    client_key: str
+    kind: MemoryKind
+    status: MemoryStatus
+    title: str
+    owner: Optional[str]
+    related_person: Optional[str]
+    due_at: Optional[datetime]
+    evidence: str
+    source_start: Optional[int]
+    source_end: Optional[int]
+    confidence: float
+    needs_review: bool
+    created_at: datetime
+    updated_at: datetime
