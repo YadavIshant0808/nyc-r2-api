@@ -50,41 +50,6 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("DB_ECHO", "db_echo"),
     )
-<<<<<<< HEAD
- 
-    
-    google_cloud_project: str = Field(
-        validation_alias=AliasChoices("GOOGLE_CLOUD_PROJECT", "google_cloud_project"),
-    )
-    google_cloud_location: str = Field(
-        validation_alias=AliasChoices("GOOGLE_CLOUD_LOCATION", "google_cloud_location"),
-    )
-    gemini_model_id: str = Field(
-        validation_alias=AliasChoices("GEMINI_MODEL_ID", "gemini_model_id"),
-    )
- 
-    # Operational defaults - not secrets, safe to default per 5.2.
-    max_audio_bytes: int = Field(
-        default=5 * 1024 * 1024,  # 5 MiB, matches the frontend recorder's own cap
-        validation_alias=AliasChoices("MAX_AUDIO_BYTES", "max_audio_bytes"),
-    )
-    max_audio_duration_seconds: int = Field(
-        default=120,  # matches the recorder's automatic stop
-        validation_alias=AliasChoices(
-            "MAX_AUDIO_DURATION_SECONDS", "max_audio_duration_seconds"
-        ),
-    )
-    vertex_timeout_seconds: float = Field(
-        default=30.0,
-        validation_alias=AliasChoices("VERTEX_TIMEOUT_SECONDS", "vertex_timeout_seconds"),
-    )
-    vertex_retry_count: int = Field(
-        default=2,
-        validation_alias=AliasChoices("VERTEX_RETRY_COUNT", "vertex_retry_count"),
-    )
- 
-=======
-
     # Vertex AI / Gemini settings. The API can still start without a project
     # configured; the analysis endpoint returns a clear 503 until it is set.
     google_cloud_project: str | None = Field(

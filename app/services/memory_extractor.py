@@ -10,24 +10,26 @@ from google.genai.errors import APIError, ClientError, ServerError
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.core.config import settings
-from app.schemas.memory import MemoryCandidate, AnalysisResult
+from app.schemas.memory import AnalysisResult, MemoryCandidate, MemoryKind
 
 logger = logging.getLogger(__name__)
 
 
 SUPPORTED_AUDIO_MIME_TYPES = frozenset({
     "audio/wav",
-        "audio/mp3",
-        "audio/mpeg",
-        "audio/aiff",
-        "audio/aac",
-        "audio/ogg",
-        "audio/flac",
-        "audio/webm",
-        "audio/opus",
-        "audio/mp4",
-        "audio/m4a",
+    "audio/mp3",
+    "audio/mpeg",
+    "audio/aiff",
+    "audio/aac",
+    "audio/ogg",
+    "audio/flac",
+    "audio/webm",
+    "audio/opus",
+    "audio/mp4",
+    "audio/m4a",
 })
+
+
 class VertexExtractionError(Exception):
     """Custom exception for errors occurring during vertex AI-based memory extraction."""
     def __init__(self, *, code: str, message: str, retryable: bool) -> None:
@@ -61,11 +63,11 @@ recording. Do two things:
  
 1. Transcribe the audio completely and accurately, preserving the original
    spoken language, in the `transcript` field.
-2. Extract "memory candidates" - concrete tasks, promises, follow-ups,
-   decisions, ideas, or facts stated in the recording.
+2. Extract "memory candidates" - concrete tasks, promises, or ideas stated
+   in the recording.
  
 Rules for each candidate:
-- `kind` must be exactly one of: task, promise, follow-up, decision, idea, fact.
+- `kind` must be exactly one of: task, promise, idea.
 - `client_key` must be a short string you generate that is unique within
   this response (e.g. "c1", "c2", ...).
 - `evidence` must be a verbatim snippet copied from your own transcript
@@ -107,15 +109,21 @@ _client: genai.Client | None = None
 def _get_client() -> genai.Client:
     global _client
     if _client is None:
+        if not settings.google_cloud_project:
+            raise VertexExtractionError(
+                code="vertex_not_configured",
+                message="GOOGLE_CLOUD_PROJECT is not configured.",
+                retryable=False,
+            )
         _client = genai.Client(
             vertexai=True,
             project=settings.google_cloud_project,
-            location=settings.google_cloud_location
-            )
+            location=settings.google_cloud_location,
+        )
     return _client
 
 
-def _normalize_mine_type(mime_type: str) -> str:
+def _normalize_mime_type(mime_type: str) -> str:
     """Strip codec parameters, e.g. 'audio/webm;codecs=opus' -> 'audio/webm'."""
     return mime_type.split(";", 1)[0].strip().lower()
 
@@ -134,12 +142,15 @@ async def extract_memories_from_audio(
     permanently-exceeded quota) fail immediately - retrying the exact same
     request won't fix those.
     """
-    normalized_mime = _normalize_mine_type(mime_type)
+    normalized_mime = _normalize_mime_type(mime_type)
     if normalized_mime not in SUPPORTED_AUDIO_MIME_TYPES:
         raise UnsupportedAudioFormatError(mime_type)
  
     client = _get_client()
-    audio_part = genai_types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
+    audio_part = genai_types.Part.from_bytes(
+        data=audio_bytes,
+        mime_type=normalized_mime,
+    )
     contents = [
         genai_types.Content(
             role="user",
@@ -228,7 +239,33 @@ async def extract_memories_from_audio(
             message=f"Gemini's structured output failed schema validation: {exc}",
             retryable=True,
         ) from exc
- 
+
+    supported_kinds = {
+        MemoryKind.TASK,
+        MemoryKind.PROMISE,
+        MemoryKind.IDEA,
+    }
+    normalized_candidates: list[MemoryCandidate] = []
+    for candidate in payload.candidates:
+        if candidate.kind not in supported_kinds:
+            raise VertexExtractionError(
+                code="invalid_model_output",
+                message=f"Unsupported memory kind: {candidate.kind.value}",
+                retryable=True,
+            )
+
+        source_start = payload.transcript.find(candidate.evidence)
+        if source_start < 0:
+            raise VertexExtractionError(
+                code="invalid_model_output",
+                message="Candidate evidence was not found in the transcript.",
+                retryable=True,
+            )
+        normalized_candidates.append(candidate.model_copy(update={
+            "source_start": source_start,
+            "source_end": source_start + len(candidate.evidence),
+        }))
+
     try:
         return AnalysisResult(
             request_id=request_id,
@@ -236,7 +273,7 @@ async def extract_memories_from_audio(
             summary=payload.summary,
             detected_language=payload.detected_language,
             warnings=payload.warnings,
-            candidates=payload.candidates,
+            candidates=normalized_candidates,
         )
     except ValidationError as exc:
         raise VertexExtractionError(

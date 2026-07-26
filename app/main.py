@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.database import engine
-from app.routers import greeting, health, user_data, memories
+from app.routers import audio_analysis, greeting, health, memories, user_data
 
 
 @asynccontextmanager
@@ -28,7 +28,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(health.router)
+app.include_router(audio_analysis.router)
 app.include_router(greeting.router)
-app.include_router(user_data.router)
+app.include_router(health.router)
 app.include_router(memories.router)
+app.include_router(user_data.router)
