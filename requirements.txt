@@ -7,3 +7,7 @@ pydantic
 sqlalchemy
 asyncpg
 alembic
+google-genai
+python-multipart
+pytest
+pytest-asyncio
