@@ -5,14 +5,11 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-# Define Memory type list to choose
+# Define Memory type list to choose — must match what the Gemini system prompt instructs
 class MemoryKind(str, Enum):
     TASK = "task"
     PROMISE = "promise"
-    FOLLOW_UP = "follow-up"
-    DECISION = "decision"
     IDEA = "idea"
-    FACT = "fact"
 
 # Define Memory status list to choose
 class MemoryStatus(str, Enum):

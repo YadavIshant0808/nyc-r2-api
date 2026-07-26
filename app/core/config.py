@@ -57,7 +57,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("GOOGLE_CLOUD_PROJECT", "GCP_PROJECT_ID"),
     )
     google_cloud_location: str = Field(
-        default="global",
+        default="us-central1",
         validation_alias=AliasChoices("GOOGLE_CLOUD_LOCATION", "VERTEX_LOCATION"),
     )
     gemini_model_id: str = Field(

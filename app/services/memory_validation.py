@@ -13,7 +13,7 @@ def apply_memory_update(memory: Memory, payload: MemoryUpdate) -> Memory:
 
     return memory
 
-def build_memory_row(payload: MemoryCreate, user_id: str, client_key: str) -> Memory:
+def build_memory_row(payload: MemoryCreate, user_id: str) -> Memory:
     """Build a new Memory instance from a MemoryCreate payload."""
 
     return Memory(

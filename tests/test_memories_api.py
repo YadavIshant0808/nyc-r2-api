@@ -35,9 +35,11 @@ def _analysis_result() -> AnalysisResult:
 def test_only_audio_memory_route_is_registered(authenticated_app) -> None:
     paths = authenticated_app.openapi()["paths"]
 
+    # The analyze endpoint must be registered (handled by audio_analysis router)
     assert "/api/memories/analyze" in paths
-    assert "/api/memories" not in paths
-    assert "/api/memories/{memory_id}" not in paths
+    # The CRUD endpoints must also be registered (handled by memories router)
+    assert "/api/memories" in paths
+    assert "/api/memories/{memory_id}" in paths
 
 
 def test_analyze_accepts_frontend_file_field(
