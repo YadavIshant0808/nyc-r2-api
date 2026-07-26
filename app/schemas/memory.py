@@ -21,36 +21,44 @@ class MemoryStatus(str, Enum):
     DISMISSED = "dismissed"
 
 class MemoryCandidate(BaseModel):
-    '''One extracted memory candidate before the user review it.'''
+    """One extracted memory candidate before the user reviews it."""
     model_config = ConfigDict(extra="forbid")
 
     client_key: str = Field(
-        min_length=1, description="The unique identifier key associated for this candidate."
+        min_length=1,
+        max_length=64,
+        description="Unique identifier for this candidate within the response.",
     )
 
     kind: MemoryKind
-    title: str = Field(min_length=2, description="The title of the memory.")
+    title: str = Field(
+        min_length=2,
+        max_length=240,
+        description="The title of the memory.",
+    )
     owner: Optional[str] = Field(default=None, max_length=255)
     related_person: Optional[str] = Field(default=None, max_length=255)
-    due_at: Optional[datetime] = Field(default=None, description="The due date and time for the memory.")
-    evidence: Optional[str] = Field(min_length=2, max_length=500, description="Verbal snipet copied from the transcript that support this candidate.")
+    due_at: Optional[datetime] = Field(
+        default=None,
+        description="The due date and time for the memory.",
+    )
+    evidence: str = Field(
+        min_length=2,
+        max_length=500,
+        description="Verbatim transcript snippet supporting this candidate.",
+    )
     source_start: Optional[int] = Field(default=None, ge=0)
     source_end: Optional[int] = Field(default=None, ge=0)
+    confidence: float = Field(ge=0, le=1)
     needs_review: bool
-
 
     @model_validator(mode="after")
     def _check_offsets(self) -> "MemoryCandidate":
         start, end = self.source_start, self.source_end
-
-    
-        if start is not None and end is not None:
-            if start < 0:
-                raise ValueError("source_start must be a non-negative integer.")
-           
-            if start >= end:
-                raise ValueError("source_start must be less than source_end.")
-            
+        if (start is None) != (end is None):
+            raise ValueError("source_start and source_end must be supplied together")
+        if start is not None and end is not None and start >= end:
+            raise ValueError("source_start must be less than source_end")
         return self
     
     @model_validator(mode="after")
@@ -66,11 +74,32 @@ class AnalysisResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
  
     request_id: str = Field(min_length=1)
-    transcript: str
-    summary: str
-    detected_language: str = Field(min_length=1)
-    warnings: list[str] = Field(default_factory=list)
+    transcript: str = Field(min_length=1)
+    summary: str = Field(max_length=1000)
+    detected_language: str = Field(min_length=1, max_length=32)
+    warnings: list[str] = Field(default_factory=list, max_length=20)
     candidates: list[MemoryCandidate] = Field(default_factory=list, max_length=12)
+
+    @model_validator(mode="after")
+    def _validate_candidate_evidence(self) -> "AnalysisResult":
+        client_keys: set[str] = set()
+        for candidate in self.candidates:
+            if candidate.client_key in client_keys:
+                raise ValueError("candidate client_key values must be unique")
+            client_keys.add(candidate.client_key)
+
+            if candidate.evidence not in self.transcript:
+                raise ValueError("candidate evidence must occur in the transcript")
+
+            if candidate.source_start is not None and candidate.source_end is not None:
+                source_slice = self.transcript[
+                    candidate.source_start:candidate.source_end
+                ]
+                if source_slice != candidate.evidence:
+                    raise ValueError(
+                        "candidate offsets must select the exact evidence"
+                    )
+        return self
 
           
 class ApiError(BaseModel):
