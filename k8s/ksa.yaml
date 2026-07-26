@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend-ksa
+  namespace: get200
+  annotations:
+    iam.gke.io/gcp-service-account: nyc-gke-cloud-build-perms@project-2505dfd6-33dd-47f2-ab6.iam.gserviceaccount.com

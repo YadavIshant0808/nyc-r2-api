@@ -1,0 +1,52 @@
+steps:
+  # 1. Build the container image using your Artifact Registry path
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'asia-south1-docker.pkg.dev/$PROJECT_ID/get200-app-api-repo/backend:$SHORT_SHA'
+      - '-t'
+      - 'asia-south1-docker.pkg.dev/$PROJECT_ID/get200-app-api-repo/backend:latest'
+      - '.'
+
+  # 2. Push the container image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'asia-south1-docker.pkg.dev/$PROJECT_ID/get200-app-api-repo/backend:$SHORT_SHA']
+
+  # 3. Push the latest tag so the base deployment image always exists
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'asia-south1-docker.pkg.dev/$PROJECT_ID/get200-app-api-repo/backend:latest']
+
+  # 4. Delete the previous migration Job before re-applying it.
+  # Kubernetes Job pod templates are immutable, so apply fails if the Job exists.
+  - name: 'gcr.io/cloud-builders/kubectl'
+    args: ['delete', 'job', 'backend-migrate', '--namespace=get200', '--ignore-not-found']
+    env:
+      - 'CLOUDSDK_COMPUTE_REGION=$_REGION'
+      - 'CLOUDSDK_CONTAINER_CLUSTER=$_CLUSTER_NAME'
+
+  # 5. Apply manifests (Deployment, HPA, Service) to the get200 namespace
+  - name: 'gcr.io/cloud-builders/kubectl'
+    args: ['apply', '-f', 'k8s/', '--namespace=get200']
+    env:
+      - 'CLOUDSDK_COMPUTE_REGION=$_REGION'
+      - 'CLOUDSDK_CONTAINER_CLUSTER=$_CLUSTER_NAME'
+
+  # 6. Set the newly built image in the deployment (Corrected container name and namespace)
+  - name: 'gcr.io/cloud-builders/kubectl'
+    args:
+      - 'set'
+      - 'image'
+      - 'deployment/get200-app-api'
+      - 'get200-api=asia-south1-docker.pkg.dev/$PROJECT_ID/get200-app-api-repo/backend:$SHORT_SHA'
+      - '--namespace=get200'
+    env:
+      - 'CLOUDSDK_COMPUTE_REGION=$_REGION'
+      - 'CLOUDSDK_CONTAINER_CLUSTER=$_CLUSTER_NAME'
+
+substitutions:
+  _REGION: asia-south1
+  _CLUSTER_NAME: nyc-r2-api
+
+options:
+  logging: CLOUD_LOGGING_ONLY

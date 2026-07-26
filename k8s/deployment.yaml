@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: get200-app-api
+  namespace: get200
+  labels:
+    app: get200-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: get200-api
+  template:
+    metadata:
+      labels:
+        app: get200-api
+    spec:
+      serviceAccountName: backend-ksa
+      containers:
+        - name: get200-api # Matches the cloudbuild.yaml "set image" instruction
+          image: asia-south1-docker.pkg.dev/project-2505dfd6-33dd-47f2-ab6/get200-app-api-repo/backend:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: get200-secrets
+          env:
+            - name: CLERK_PUBLISHABLE_KEY
+              value: "pk_test_Z3VpZGluZy1qZW5uZXQtNzkuY2xlcmsuYWNjb3VudHMuZGV2JA"
+
+            - name: CLERK_FRONTEND_API_URL
+              value: "https://guiding-jennet-79.clerk.accounts.dev"
+
+            - name: CLERK_BACKEND_API_URL
+              value: "https://api.clerk.com"
+
+            - name: CLERK_JWKS_URL
+              value: "https://guiding-jennet-79.clerk.accounts.dev/.well-known/jwks.json"
+
+            - name: CLERK_PUBLIC_JWKS_KEY
+              value: |
+                -----BEGIN PUBLIC KEY-----
+                MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4S70gan4jBMtwHYym8YT
+                Twb8E3kjjxp1jjEHU2miPPcSUVVlnwyOF366IwwgeyPiqCpauTia+fpRhTI3YD49
+                2DDDZfq4m0A7dF+vVIZ6DhGjDlDF0TAN0YqWFfN0a7BrQu4+BWHxT8q9IpIyl1tW
+                2io3+dPus84jwayb3AgFNpi4zuqvry6esJUf0RvvrGtCq6tOnB5MgsiNlqgW5W/P
+                cY+MiEVlWhUPcJSOpN/b5bbtPyshM0SPTsUioXK7e5uScwnLjcTjGLZk2PSFrFHl
+                ZSELfGTJpzyKCjrQpLbUVJUyL4AxT0YAfoAywGZU/hYHGewTkTFG6d56AWCweOO3
+                AQIDAQAB
+                -----END PUBLIC KEY-----
+
+            # Explicit values override envFrom entries. Keep browser origins
+            # synchronized with the deployed frontend domains.
+            - name: CORS_ORIGINS
+              value: "https://nyc-r2-web.vercel.app"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "52Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+        # ---- Cloud SQL Auth Proxy sidecar ----
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.0
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - "project-2505dfd6-33dd-47f2-ab6:asia-south1:get200-db"
+          securityContext:
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"

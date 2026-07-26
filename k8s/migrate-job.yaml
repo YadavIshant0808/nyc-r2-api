@@ -1,0 +1,26 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backend-migrate
+  namespace: get200 # Fixed: Changed from GET200
+spec:
+  backoffLimit: 2
+  template:
+    spec:
+      serviceAccountName: backend-ksa # Aligned Service Account
+      restartPolicy: Never
+      initContainers:
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.14.0
+          restartPolicy: Always
+          args:
+            - "--structured-logs"
+            - "--port=5432"
+            - "project-2505dfd6-33dd-47f2-ab6:asia-south1:get200-db"
+      containers:
+        - name: migrate
+          image: asia-south1-docker.pkg.dev/project-2505dfd6-33dd-47f2-ab6/get200-app-api-repo/backend:latest # Aligned with correct Artifact Registry repo path
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - secretRef:
+                name: get200-secrets # Fixed: Aligned to your real secret name (get200-secrets)
