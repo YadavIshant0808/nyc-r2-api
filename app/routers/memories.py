@@ -157,22 +157,45 @@ async def get_memories(
     return result.scalars().all()
  
 
-@router.get("/api/memories/{memory_id}")
-async def get_memory(memory_id: str, user: dict = Depends(get_current_user_profile)):
-    '''
-    Protected route. Requires `Authorization: Bearer <clerk_session_token>`.
-    '''
-    pass
-@router.put("/api/memories/{memory_id}")
-async def update_memory(memory_id: str, user: dict = Depends(get_current_user_profile)):
-    '''
-    Protected route. Requires `Authorization: Bearer <clerk_session_token>`.
-    ''' 
-    pass
+@router.get("/api/memories/{memory_id}", response_model=MemoryRead)
+async def get_memory(
+    memory_id: int,
+    user: dict = Depends(get_current_user_profile),
+    db: AsyncSession = Depends(get_db),
+    ):
 
-@router.delete("/api/memories/{memory_id}")
-async def delete_memory(memory_id: str, user: dict = Depends(get_current_user_profile)):
+    '''
+    Protected route. Requires `Authorization: Bearer <clerk_session_token>`.
+    '''
+    user_id = _current_user_id(user)
+    return await _get_owned_memory_or_404(db, memory_id, user_id)
+
+
+@router.put("/api/memories/{memory_id}", response_model = MemoryRead)
+async def update_memory(
+    memory_id: int,
+    payload: MemoryUpdate,
+    user: dict = Depends(get_current_user_profile),
+    db: AsyncSession = Depends(get_db),
+    ):
+    '''Update the memory'''
+    user_id = _current_user_id(user)
+    memory = await _get_owned_memory_or_404(db, memory_id, user_id)
+    apply_memory_update(memory, payload)
+    await db.commit()
+    await db.refresh(memory)
+    return memory
+
+@router.delete("/api/memories/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_memory(
+    memory_id: int,
+    user: dict = Depends(get_current_user_profile),
+    db: AsyncSession = Depends(get_db),
+    ):
     '''
     Protected route. Requires `Authorization: Bearer <clerk_session_token>`.
     ''' 
-    pass
+    user_id = _current_user_id(user)
+    memory = await _get_owned_memory_or_404(db, memory_id, user_id)
+    await db.delete(memory)
+    await db.commit()
